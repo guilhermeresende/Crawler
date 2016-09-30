@@ -4,7 +4,9 @@ import re
 import json
 
 users = ["guilhermeresende"]
-token="8598d7eb9235997676760e8695c3951a2a9c31b7"
+tokenf=open("token.txt")
+token=tokenf.read()
+tokenf.close()
 for user in users:
 	repos=[]
 	url="https://api.github.com/users/"+user+"/repos"
@@ -38,9 +40,6 @@ for user in users:
 				#print "json loaded"	
 				numcommits+=len(commits)	
 				for commit in commits:				
-					f=open("exit.txt","a")
-					f.write(str(commit)+"\n")
-					f.close()
 					author_list.append(commit[u'commit'][u'author'][u'email'])
 				#print "analyzed"
 				if(currentpage==last):
