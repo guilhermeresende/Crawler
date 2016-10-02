@@ -14,24 +14,28 @@ def create_req(url):
 	req.add_header("Authorization","token "+token)
 	return req
 
-users = ["guilhermeleobas"]
+users = ["amandaccsantos"]
 f=open("commits.txt","w")
 commitsha = set()
+numreqs=0
 
+wth_author=0
+wthout_author=0
+
+start = time.time()
 for user in users:
 	repos=[]
 	url="https://api.github.com/users/"+user+"/repos"
 	
 	response=urllib2.urlopen(create_req(url))
 	results= json.loads(response.read())
+	numreqs+=1 #TESTE
 
 	for i in results:
 		repos.append(i[u'commits_url'][:-6])
 
 	for repo in repos:
-		numreqs=0
-		start = time.time()
-
+		
 		print repo		
 		req=create_req(repo)
 		numreqs+=1 #TESTE
@@ -60,7 +64,9 @@ for user in users:
 						if commit[u'committer']!=None: #adds authors
 							if commit[u'committer'][u'login'] not in users:
 								users.append(commit[u'committer'][u'login'])
-								print users	
+							wth_author+=1
+						else:
+							wthout_author+=1
 
 				if(currentpage==last):
 					break
@@ -79,9 +85,15 @@ for user in users:
 				raise
 
 		end = time.time()
-		reqs_per_s=float(numreqs)/(end-start)
-		print reqs_per_s
-		if(reqs_per_s>1.38):
-			time.sleep(1)
+		time_dif=(end-start)
+		if(time_dif>360):
+			numreqs=0
+			start=time.time()
+		elif(numreqs>=4999): #reached request limit
+			print "WAIT FOR REQ LIMIT"
+			time.sleep(360-time_dif)
+			numreqs=0
+			start=time.time()
+	print float(wth_author)/(wth_author+wthout_author)
 
 f.close()
