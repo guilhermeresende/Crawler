@@ -34,8 +34,7 @@ for user in users:
 	for i in results:
 		repos.append(i[u'commits_url'][:-6])
 
-	for repo in repos:
-		
+	for repo in repos:		
 		print repo		
 		req=create_req(repo)
 		numreqs+=1 #TESTE
@@ -51,11 +50,9 @@ for user in users:
 				last=int(m.group(2))
 
 			currentpage=1
-			while(True):
-				commits=json.loads(response.read())
-	
+			while(True): #Collect all repository commit pages
+				commits=json.loads(response.read())	
 				for commit in commits:
-
 					if not commit[u'sha'] in commitsha: #writes commit
 						s=repo+"\t"+commit[u'commit'][u'author'][u'email']+"\t"+commit[u'commit'][u'author'][u'date']+"\n"
 						commitsha.add(commit[u'sha'])
@@ -76,7 +73,6 @@ for user in users:
 					print url
 					response=urllib2.urlopen(create_req(url))
 					numreqs+=1 #TESTE
-
 				
 		except urllib2.URLError as e:
 			if(e.reason=="Conflict"):
