@@ -8,15 +8,26 @@ tokenf=open("token.txt")
 token=tokenf.read()
 tokenf.close()
 
-
 def create_req(url):
 	req=urllib2.Request(url)
 	req.add_header("Authorization","token "+token)
 	return req
 
-users = ["amandaccsantos"]
+def do_req(url):
+	response=urllib2.urlopen(create_req(url))
+	return json.loads(response.read())
+
+
+def collect_repos(results, repos,checked_repos):
+	for res in results:
+		if not(res[u'id'] in checked_repos):
+			repos.append(res[u'commits_url'][:-6])
+			checked_repos.add(res[u'id'])
+
+users = ["guilhermeresende"]
 f=open("commits.txt","w")
 commitsha = set()
+checked_repos=set()
 numreqs=0
 
 wth_author=0
@@ -27,12 +38,20 @@ for user in users:
 	repos=[]
 	url="https://api.github.com/users/"+user+"/repos"
 	
-	response=urllib2.urlopen(create_req(url))
-	results= json.loads(response.read())
-	numreqs+=1 #TESTE
+	results=do_req(url)
+	numreqs+=1 
 
-	for i in results:
-		repos.append(i[u'commits_url'][:-6])
+	collect_repos(results,repos,checked_repos)
+
+	url="https://api.github.com/users/"+user+"/orgs"	
+	results=do_req(url)
+	numreqs+=1
+
+	for org in results:
+		url=org[u'repos_url']
+		results=do_req(url)
+		numreqs+=1
+		collect_repos(results,repos,checked_repos)
 
 	for repo in repos:		
 		print repo		
