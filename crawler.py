@@ -27,8 +27,24 @@ def collect_repos(results, repos,checked_repos):
 			repos.append(res[u'commits_url'][:-6])
 			checked_repos.add(res[u'id'])
 
+def get_num_pages(link):
+	link=response.info().getheader('Link')
+	if(link==None): #find number of pages
+		return 1
+	else:
+		m = re.search('rel="next",(.*)page=(\d+)>; rel="last"',link)
+		return int(m.group(2))
+
+def collect_commits_from_push(results,fuser):
+	for res in results[u'commits']:
+		s="commits"+"\t"+res[u'url']+"\t"+res[u'author'][u'email']+"\t"+res[u'author'][u'name']+"\n"
+		fuser.write(s)
+
+
+
 users = ["guilhermeresende"]
 f=open("commits.txt","w")
+fuser=open("events.txt","w")
 checked_repos=set()
 
 wth_author=0
@@ -43,10 +59,37 @@ for user in users:
 	 
 	collect_repos(results,repos,checked_repos)
 
+	'''TESTING EVENTS'''
+	print "User", user
+	url="https://api.github.com/users/"+user+"/events"
+	req=create_req(url)
+	response=urllib2.urlopen(req)
+	
+	last = get_num_pages(response.info().getheader('Link'))
+
+	currentpage=1
+	while(True):
+		results=json.loads(response.read())
+		
+		for res in results:
+			s=user+"\t"+res[u'id']+"\t"+res[u'type']+"\t"+res[u'created_at']+"\n"
+			fuser.write(s)
+			
+			if res[u'type']=='PushEvent':
+				collect_commits_from_push(res[u'payload'],fuser)
+
+		if(currentpage==last):
+			break
+		else:
+			currentpage+=1
+			newurl=url+"?page="+str(currentpage)
+			response=urllib2.urlopen(create_req(newurl))
+	
+	'''END TESTING EVENTS'''
+
 	url="https://api.github.com/users/"+user+"/orgs"	
 	results=do_req(url)
 
-	
 	
 	for org in results:
 		url=org[u'repos_url']
@@ -60,13 +103,8 @@ for user in users:
 		
 		try:
 			response=urllib2.urlopen(req)
-			link=response.info().getheader('Link')
-
-			if(link==None): #find number of pages
-				last=1
-			else:
-				m = re.search('rel="next",(.*)page=(\d+)>; rel="last"',link)
-				last=int(m.group(2))
+			
+			last = get_num_pages(response.info().getheader('Link'))
 
 			currentpage=1
 			while(True): #Collect all repository commit pages
@@ -74,10 +112,10 @@ for user in users:
 				for commit in commits:  #writes commit
 					s=repo+"\t"+commit[u'commit'][u'author'][u'email']+"\t"+commit[u'commit'][u'author'][u'date']
 
-					if commit[u'committer']!=None: #adds authors
-						s=s+"\t"+str(commit[u'committer'][u'id'])
-						if commit[u'committer'][u'login'] not in users:
-							users.append(commit[u'committer'][u'login'])
+					if commit[u'author']!=None: #adds authors
+						s=s+"\t"+str(commit[u'author'][u'id'])
+						if commit[u'author'][u'login'] not in users:
+							users.append(commit[u'author'][u'login'])
 						wth_author+=1
 					else:
 						wthout_author+=1
@@ -112,6 +150,7 @@ for user in users:
 			numreqs=0
 			start=time.time()
 
-	print float(wth_author)/(wth_author+wthout_author) #number of commits with author
+	print "Proportion with user",float(wth_author)/(wth_author+wthout_author) #number of commits with author
 
 f.close()
+fuser.close()
