@@ -41,27 +41,34 @@ def collect_commits_from_push(results,fuser):
 		fuser.write(s.encode('utf-8'))
 
 def recover_from_fail():
+	allusers=set()
+	commits=""
+	events=""
 	flist=open("userlist.txt","r")
 	currentuser=flist.readline().strip("\n")
 	users=eval(flist.readline().strip("\n"))
 	f=open("commits.txt","r")
 	f2=open("events.txt","r")
-	commits=""
-	events=""
 	for line in f:
 		fields=line.strip("\n").split("\t")
+		if len(fields)==1 and not(fields[0] in allusers):
+			allusers.add(fields[0])
 		if fields[0]==currentuser:
 			break
 		commits+=line
+
 	for line in f2:
 		fields=line.strip("\n").split("\t")
 		if fields[0]==currentuser:
 			break
 		events+=line
-	return (currentuser,users,commits,events)
+
+	for user in users:
+		allusers.add(user)
+	return (currentuser,users,commits,events,allusers)
 
 if(len(sys.argv)>1):
-	(currentuser,users,commits,events)=recover_from_fail()
+	(currentuser,users,commits,events,allusers)=recover_from_fail()
 	f=open("commits.txt","w")
 	fuser=open("events.txt","w")
 	f.write(commits)
@@ -70,6 +77,8 @@ if(len(sys.argv)>1):
 	users=users[frst:]
 else:
 	users = ["guilhermeresende"]
+	allusers=set()
+	allusers.add("guilhermeresende")
 	f=open("commits.txt","w")
 	fuser=open("events.txt","w")
 
@@ -83,6 +92,7 @@ for user in users:
 	flist=open("userlist.txt","w")
 	flist.write(user+"\n"+str(users))
 	flist.close()
+	f.write(user+"\n")
 	repos=[]
 	url="https://api.github.com/users/"+user+"/repos"
 	
@@ -143,10 +153,11 @@ for user in users:
 				for commit in commits:  #writes commit
 					s=repo+"\t"+commit[u'commit'][u'author'][u'email']+"\t"+commit[u'commit'][u'author'][u'date']
 
-					if commit[u'author']!=None: #adds authors
+					if commit[u'author']!=None and (u'id' in commit[u'author']): #adds authors
 						s=s+"\t"+str(commit[u'author'][u'id'])
-						if commit[u'author'][u'login'] not in users:
+						if commit[u'author'][u'login'] not in allusers:
 							users.append(commit[u'author'][u'login'])
+							allusers.add(commit[u'author'][u'login'])
 						wth_author+=1
 					else:
 						wthout_author+=1
