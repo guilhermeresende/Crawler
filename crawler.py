@@ -4,11 +4,16 @@ import re
 import json
 import time
 import sys
+import signal
 
 tokenf=open("token.txt")
 token=tokenf.read()
 tokenf.close()
 numreqs=0
+
+def handler(signum, frame):
+    print 'Signal handler called (reading took too long)'
+    raise IOError("Couldn't read page!")
 
 def create_req(url):
 	global numreqs
@@ -18,11 +23,18 @@ def create_req(url):
 	return req
 
 def do_req(url):
-	response=urllib2.urlopen(create_req(url))
+	try:
+		response=urllib2.urlopen(create_req(url))
+	except urllib2.HTTPError as e:
+		if e.code == 451:
+			print "Page not allowed"
+		return json.loads("[]")
 	return json.loads(response.read())
 
 def get_fork_info(url):
 	repoinfo=do_req(url)
+	if repoinfo==[]:
+		return ()
 	return (repoinfo[u'parent'][u'full_name'], repoinfo[u'parent'][u'owner'][u'login'])
 
 def get_orgs(url):
@@ -53,12 +65,15 @@ def collect_repos(url, repos,checked_repos):
 	while(True):
 		results=json.loads(response.read())
 		for res in results:
-			if not(res[u'id'] in checked_repos):
+			#print res[u'commits_url'], type(res[u'commits_url']), list(checked_repos)[0],type(list(checked_repos)[0])
+			if not(res[u'commits_url'][:-6] in checked_repos):
 				if(res[u'fork']==False): #gets repo_link, owner, and if its a fork, fork count
 					repos.append((res[u'commits_url'][:-6],res[u'owner'][u'login'],res[u'fork'],res[u'forks_count']))
-				else: #gets repo_link, owner, if its a fork, fork count and parentinfo				
+				else: #gets repo_link, owner, if its a fork, fork count and parentinfo
 					repos.append((res[u'commits_url'][:-6],res[u'owner'][u'login'],res[u'fork'],res[u'forks_count'])+get_fork_info(res[u'url']))
-				checked_repos.add(res[u'id'])
+				checked_repos.add(res[u'commits_url'][:-6])
+			else:
+				print "repeated", res[u'commits_url'][:-6]
 		if(currentpage==last):
 			break
 		else:
@@ -107,16 +122,20 @@ def get_user_info(user):
 	return s
 
 def collect_commits_from_repo(req,repo,users,allusers,fcommit):
-	response=urllib2.urlopen(req)
-
+	try:
+		response=urllib2.urlopen(req)
+	except urllib2.HTTPError as e:
+		if e.code == 451:
+			print "page not allowed"
+			return
+		else:
+			raise
 	last = get_num_pages(response.info().getheader('Link'))	
 
+	commits=json.loads(response.read())	
 	currentpage=1
 	while(True): #Collect all repository commit pages
-		temp=response.read()
-		print "Read response"
-		commits=json.loads(temp)	
-		print 'Loaded json'
+
 		for commit in commits:  #writes commit
 			s=repo+"\t"+commit[u'commit'][u'author'][u'name']+"\t"+commit[u'commit'][u'author'][u'email']+"\t"+commit[u'commit'][u'author'][u'date']
 
@@ -135,8 +154,23 @@ def collect_commits_from_repo(req,repo,users,allusers,fcommit):
 			print url, last
 			response=urllib2.urlopen(create_req(url))
 
+			'''Tries to read and load untill it works'''
+			signal.signal(signal.SIGALRM, handler)
+			signal.alarm(10) 
+			readdone=1
+			while(readdone):
+				try:
+					readdone=0
+					commits=json.loads(response.read())	
+				except IOError as e:
+					readdone=1
+					response=urllib2.urlopen(create_req(url))
+					signal.alarm(10)
+			signal.alarm(0)
+
 def recover_from_fail():
 	allusers=set()
+	checked_repos=set()
 	commits=""
 	events=""
 	flist=open("userlist.txt","r")
@@ -146,8 +180,12 @@ def recover_from_fail():
 	fuser=open("events.txt","r")
 	for line in fcommit:
 		fields=line.strip("\n").strip("\r").split("\t")
-		if fields[0]=="repo_info:" and not(fields[2] in allusers):
-			allusers.add(fields[2])
+		if fields[0]=="repo_info:":
+			if not(fields[2] in allusers):
+				allusers.add(fields[2])
+			if not(fields[1] in checked_repos):
+				checked_repos.add(fields[1])
+
 		if fields[2]==currentuser:
 			break
 		commits+=line
@@ -162,27 +200,25 @@ def recover_from_fail():
 		allusers.add(user)
 	fcommit.close()
 	fuser.close()
-	return (currentuser,users,commits,events,allusers)
+	flist.close()
+	return (currentuser,users,commits,events,allusers,checked_repos)
 
 
 if len(sys.argv)>1 and sys.argv[1]=='--restart':
 	users = ["guilhermeresende"]
 	allusers=set()
+	checked_repos=set()
 	allusers.add("guilhermeresende")
 	fcommit=open("commits.txt","w")
-	fuser=open("events.txt","w")
-
+	fuser=open("events.txt","w")	
 else:
-	(currentuser,users,commits,events,allusers)=recover_from_fail()
+	(currentuser,users,commits,events,allusers,checked_repos)=recover_from_fail()
 	fcommit=open("commits.txt","w")
 	fuser=open("events.txt","w")
 	fcommit.write(commits)
 	fuser.write(events)
 	frst=users.index(currentuser)
 	users=users[frst:]
-	
-
-checked_repos=set()
 
 start = time.time()
 for user in users:
@@ -191,8 +227,8 @@ for user in users:
 	flist.write(user+"\n"+str(users))
 	flist.close()
 	repos=[]
-	url="https://api.github.com/users/"+user+"/repos"
-	 
+	url="https://api.github.com/users/"+user+"/repos"	
+
 	collect_repos(url,repos,checked_repos)
 
 	s=get_user_info(user)
@@ -204,7 +240,7 @@ for user in users:
 
 	for org in orgs:
 		url=org[u'repos_url']
-		collect_repos(url,repos,checked_repos)
+		collect_repos(url,repos,checked_repos)	
 
 	for repoinfo in repos:
 		repo=repoinfo[0]
