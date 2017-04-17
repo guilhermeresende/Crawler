@@ -1,3 +1,4 @@
+from crawler_lib import *
 import urllib
 import urllib2
 import re
@@ -6,181 +7,50 @@ import time
 import sys
 import signal
 
-tokenf=open("token.txt")
-token=tokenf.read()
-tokenf.close()
-numreqs=0
-
-def handler(signum, frame):
-    print 'Signal handler called (reading took too long)'
-    raise IOError("Couldn't read page!")
-
-def create_req(url):
-	global numreqs
-	req=urllib2.Request(url)
-	req.add_header("Authorization","token "+token)
-	numreqs+=1
-	return req
-
-def do_req(url):
-	try:
-		response=urllib2.urlopen(create_req(url))
-	except urllib2.HTTPError as e:
-		if e.code == 451:
-			print "Page not allowed"
-			return json.loads("[]")
-		elif e.code == 404:
-			print "page not found"
-			return json.loads("[]")
-		elif e.code == 403:
-			print "page forbidden"
-			return json.loads("[]")
-		else:
-			raise
-	return json.loads(response.read())
-
 def get_fork_info(url): #returns parent's name and owner of forked repository
-	repoinfo=do_req(url)
+	repoinfo=do_req(url)[0]
 	if repoinfo==[]:
 		return ()
 	return (repoinfo[u'parent'][u'full_name'], repoinfo[u'parent'][u'owner'][u'login'])
 
-def get_orgs(url): #get all organizations that the user is a public member of
-	req=create_req(url)
-	response=urllib2.urlopen(req)
-	
-	last = get_num_pages(response.info().getheader('Link'))
-	currentpage=1
-	orgs=[]
-	while(True):
-		results=json.loads(response.read())
-		for org in results:
+def get_orgs(url,orgs):
+	for org in results:
 			orgs.append(org)
-		if(currentpage==last):
-			break
-		else:
-			currentpage+=1
-			newurl=url+"?page="+str(currentpage)
-			response=urllib2.urlopen(create_req(newurl))
+
+def update_orgs(url,orgs): #get all organizations that the user is a public member of
+	get_api_pages(url,get_orgs(,orgs))
 	return orgs
 
+def update_collected_repos(results, checked_repos):
+	for res in results:
+		if not(res[u'commits_url'][:-6] in checked_repos):
+			if(res[u'fork']==False): #gets repo_link, owner, and if its a fork, fork count
+				repos.append((res[u'commits_url'][:-6],res[u'owner'][u'login'],res[u'fork'],res[u'forks_count']))
+			else: #gets repo_link, owner, if its a fork, fork count and parentinfo
+				repos.append((res[u'commits_url'][:-6],res[u'owner'][u'login'],res[u'fork'],res[u'forks_count'])+get_fork_info(res[u'url']))
+			checked_repos.add(res[u'commits_url'][:-6])
+		else:
+			print "repeated", res[u'commits_url'][:-6]
+
 def collect_repos(url, repos,checked_repos): #collect the repositories of a member or organization (stored in repos)
-	req=create_req(url)
-	response=urllib2.urlopen(req)
-	
-	last = get_num_pages(response.info().getheader('Link'))
-	currentpage=1
-	while(True):
-		results=json.loads(response.read())
-		for res in results:
-			if not(res[u'commits_url'][:-6] in checked_repos):
-				if(res[u'fork']==False): #gets repo_link, owner, and if its a fork, fork count
-					repos.append((res[u'commits_url'][:-6],res[u'owner'][u'login'],res[u'fork'],res[u'forks_count']))
-				else: #gets repo_link, owner, if its a fork, fork count and parentinfo
-					repos.append((res[u'commits_url'][:-6],res[u'owner'][u'login'],res[u'fork'],res[u'forks_count'])+get_fork_info(res[u'url']))
-				checked_repos.add(res[u'commits_url'][:-6])
-			else:
-				print "repeated", res[u'commits_url'][:-6]
-		if(currentpage==last):
-			break
-		else:
-			currentpage+=1
-			newurl=url+"?page="+str(currentpage)
-			response=urllib2.urlopen(create_req(newurl))
+	get_api_pages(url,update_collected_repos,(checked_repos,))
 
-def get_num_pages(link): #get the total number of pages containing the information requested
-	if(link==None):
-		return 1
-	else:
-		m = re.search('rel="next",(.*)page=(\d+)>; rel="last"',link)
-		return int(m.group(2))
 
-def get_commits_from_push(results): #get the commits of a push event
-	s=""
-	for res in results[u'commits']:
-		s+="commits"+"\t"+res[u'url']+"\t"+res[u'author'][u'email']+"\t"+res[u'author'][u'name']+"\n"
-	return s
+def write_repo_commits(commits,fcommit,users,allusers):
+	for commit in commits:  #writes commit
+		s=repo+"\t"+commit[u'commit'][u'author'][u'name']+"\t"+commit[u'commit'][u'author'][u'email']+"\t"+commit[u'commit'][u'author'][u'date']
 
-def get_user_info(user): #get user events
-	url="https://api.github.com/users/"+user+"/events"
-	print url
-	req=create_req(url)
-	response=urllib2.urlopen(req)
-	
-	last = get_num_pages(response.info().getheader('Link'))
+		if commit[u'author']!=None and (u'id' in commit[u'author']): #adds authors
+			s+="\t"+str(commit[u'author'][u'id'])
+			if commit[u'author'][u'login'] not in allusers:
+				users.append(commit[u'author'][u'login'])
+				allusers.add(commit[u'author'][u'login'])
 
-	s=""
-	currentpage=1
-	while(True):
-		results=json.loads(response.read())
-		
-		for res in results:
-			s+=user+"\t"+res[u'id']+"\t"+res[u'type']+"\t"+res[u'created_at']+"\n"
-			#fuser.write(s)
-
-			if res[u'type']=='PushEvent':
-				s+=get_commits_from_push(res[u'payload'])
-
-		if(currentpage==last):
-			break
-		else:
-			currentpage+=1
-			newurl=url+"?page="+str(currentpage)
-			response=urllib2.urlopen(create_req(newurl))
-	return s
+		s+="\n"
+		fcommit.write(s.encode('utf-8'))
 
 def collect_commits_from_repo(req,repo,users,allusers,fcommit): #writes commits from repo 'repo' into file 'fcommit'
-	try:
-		response=urllib2.urlopen(req)
-	except urllib2.HTTPError as e:
-		if e.code == 451:
-			print "page not allowed"
-			return
-		elif e.code == 404:
-			print "page not found"
-			return
-		elif e.code == 403:
-			print "page forbidden"
-			return
-		else:
-			raise
-	last = get_num_pages(response.info().getheader('Link'))	
-
-	commits=json.loads(response.read())	
-	currentpage=1
-	while(True): #Collect all repository commit pages
-
-		for commit in commits:  #writes commit
-			s=repo+"\t"+commit[u'commit'][u'author'][u'name']+"\t"+commit[u'commit'][u'author'][u'email']+"\t"+commit[u'commit'][u'author'][u'date']
-
-			if commit[u'author']!=None and (u'id' in commit[u'author']): #adds authors
-				s+="\t"+str(commit[u'author'][u'id'])
-				if commit[u'author'][u'login'] not in allusers:
-					users.append(commit[u'author'][u'login'])
-					allusers.add(commit[u'author'][u'login'])
-
-			s+="\n"
-			fcommit.write(s.encode('utf-8'))
-		if(currentpage==last):
-			break
-		else:
-			currentpage+=1
-			url=repo+"?page="+str(currentpage)
-			print url, last
-			
-			'''Tries to read page untill it works'''
-			signal.signal(signal.SIGALRM, handler)
-			signal.alarm(15) 
-			readdone=1
-			while(readdone):
-				try:
-					readdone=0
-					response=urllib2.urlopen(create_req(url))					
-					commits=json.loads(response.read())	
-				except:
-					readdone=1
-					signal.alarm(15)
-			signal.alarm(0)
+	get_api_pages(repo,write_repo_commits,(fcommit,users,allusers))
 
 def recover_from_fail():
 	allusers=set()
@@ -190,8 +60,6 @@ def recover_from_fail():
 	flist=open("userlist.txt","r")
 	currentuser=flist.readline().strip("\n").strip("\r")
 	users=eval(flist.readline().strip("\n").strip("\r"))
-	#allusers=eval(flist.readline().strip("\n").strip("\r"))
-	#checked_repos=eval(flist.readline().strip("\n").strip("\r"))
 
 	current_repo='https://api.github.com/repos/mozilla/gecko-dev/commits'
 	fcommit = open("commits.txt","r+")
@@ -212,14 +80,7 @@ def recover_from_fail():
 			if not(fields[1] in checked_repos):
 				checked_repos.add(fields[1])		
 	fcommit.truncate()
-	'''for line in fuser: NOT COLLECTING ANYMORE
-		fields=line.strip("\n").strip("\r").split("\t")
-		if fields[0]==currentuser:
-			break
-		events+=line'''
 
-	#for user in users:
-	#	allusers.add(user)
 	fcommit.close()
 	fuser.close()
 	flist.close()
@@ -240,7 +101,6 @@ def main():
 		fcommit=open("commits.txt","a+")
 		fcommit.seek(0,2)
 		fuser=open("events.txt","w")
-		#fcommit.write(commits)
 		fuser.write(events)
 		frst=users.index(currentuser)
 		users=users[frst:]
@@ -256,8 +116,9 @@ def main():
 
 		collect_repos(url,repos,checked_repos)
 
-		url="https://api.github.com/users/"+user+"/orgs"	
-		orgs=get_orgs(url)
+		url="https://api.github.com/users/"+user+"/orgs"
+		orgs=[]	
+		update_orgs(url,orgs)
 
 		for org in orgs:
 			url=org[u'repos_url']
