@@ -39,13 +39,13 @@ def do_req(url):
 			raise
 	return json.loads(response.read())
 
-def get_fork_info(url):
+def get_fork_info(url): #returns parent's name and owner of forked repository
 	repoinfo=do_req(url)
 	if repoinfo==[]:
 		return ()
 	return (repoinfo[u'parent'][u'full_name'], repoinfo[u'parent'][u'owner'][u'login'])
 
-def get_orgs(url):
+def get_orgs(url): #get all organizations that the user is a public member of
 	req=create_req(url)
 	response=urllib2.urlopen(req)
 	
@@ -64,7 +64,7 @@ def get_orgs(url):
 			response=urllib2.urlopen(create_req(newurl))
 	return orgs
 
-def collect_repos(url, repos,checked_repos):
+def collect_repos(url, repos,checked_repos): #collect the repositories of a member or organization (stored in repos)
 	req=create_req(url)
 	response=urllib2.urlopen(req)
 	
@@ -88,20 +88,20 @@ def collect_repos(url, repos,checked_repos):
 			newurl=url+"?page="+str(currentpage)
 			response=urllib2.urlopen(create_req(newurl))
 
-def get_num_pages(link):
-	if(link==None): #find number of pages
+def get_num_pages(link): #get the total number of pages containing the information requested
+	if(link==None):
 		return 1
 	else:
 		m = re.search('rel="next",(.*)page=(\d+)>; rel="last"',link)
 		return int(m.group(2))
 
-def get_commits_from_push(results):
+def get_commits_from_push(results): #get the commits of a push event
 	s=""
 	for res in results[u'commits']:
 		s+="commits"+"\t"+res[u'url']+"\t"+res[u'author'][u'email']+"\t"+res[u'author'][u'name']+"\n"
 	return s
 
-def get_user_info(user):
+def get_user_info(user): #get user events
 	url="https://api.github.com/users/"+user+"/events"
 	print url
 	req=create_req(url)
@@ -129,7 +129,7 @@ def get_user_info(user):
 			response=urllib2.urlopen(create_req(newurl))
 	return s
 
-def collect_commits_from_repo(req,repo,users,allusers,fcommit):
+def collect_commits_from_repo(req,repo,users,allusers,fcommit): #writes commits from repo 'repo' into file 'fcommit'
 	try:
 		response=urllib2.urlopen(req)
 	except urllib2.HTTPError as e:
@@ -170,7 +170,7 @@ def collect_commits_from_repo(req,repo,users,allusers,fcommit):
 			
 			'''Tries to read page untill it works'''
 			signal.signal(signal.SIGALRM, handler)
-			signal.alarm(10) 
+			signal.alarm(15) 
 			readdone=1
 			while(readdone):
 				try:
@@ -179,7 +179,7 @@ def collect_commits_from_repo(req,repo,users,allusers,fcommit):
 					commits=json.loads(response.read())	
 				except:
 					readdone=1
-					signal.alarm(10)
+					signal.alarm(15)
 			signal.alarm(0)
 
 def recover_from_fail():
@@ -212,11 +212,11 @@ def recover_from_fail():
 			if not(fields[1] in checked_repos):
 				checked_repos.add(fields[1])		
 	fcommit.truncate()
-	for line in fuser:
+	'''for line in fuser: NOT COLLECTING ANYMORE
 		fields=line.strip("\n").strip("\r").split("\t")
 		if fields[0]==currentuser:
 			break
-		events+=line
+		events+=line'''
 
 	#for user in users:
 	#	allusers.add(user)
