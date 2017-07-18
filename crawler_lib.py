@@ -32,15 +32,16 @@ def do_req(url): #makes req, return response and number of pages
 	except urllib2.HTTPError as e:
 		if e.code == 451:
 			print "Page not allowed"
-			return (json.loads("[]"),0)
+			return (json.loads("[]"),-2)
 		elif e.code == 404:
-			print "page not found"
-			return (json.loads("[]"),0)
+			print "Page not found"
+			return (json.loads("[]"),-1)
 		elif e.code == 403:
-			print "page forbidden"
+			print "Page forbidden"
+			return (json.loads("[]"),-2)
+		elif e.code == 409:
+			print "Empty Repository"
 			return (json.loads("[]"),0)
-		else:
-			raise
 	last = get_num_pages(response.info().getheader('Link'))	
 	return (json.loads(response.read()),last)
 
@@ -49,7 +50,8 @@ def get_api_pages(url, write_result_func, params):
 	(results,last)=do_req(url)	
 	currentpage=1
 	while(True): #Collect all repository commit pages
-		write_result_func(results,*params)
+		if(write_result_func(results,url,*params))==-1:
+			return
 
 		if(currentpage>=last):
 			break

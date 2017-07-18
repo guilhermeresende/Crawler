@@ -13,7 +13,7 @@ def get_fork_info(url): #returns parent's name and owner of forked repository
 		return ()
 	return (repoinfo[u'parent'][u'full_name'], repoinfo[u'parent'][u'owner'][u'login'])
 
-def get_orgs(url,orgs):
+def get_orgs(results,url,orgs):
 	for org in results:
 			orgs.append(org)
 
@@ -21,7 +21,7 @@ def update_orgs(url,orgs): #get all organizations that the user is a public memb
 	get_api_pages(url,get_orgs(,orgs))
 	return orgs
 
-def update_collected_repos(results, checked_repos):
+def update_collected_repos(results, url, checked_repos):
 	for res in results:
 		if not(res[u'commits_url'][:-6] in checked_repos):
 			if(res[u'fork']==False): #gets repo_link, owner, and if its a fork, fork count
@@ -36,7 +36,7 @@ def collect_repos(url, repos,checked_repos): #collect the repositories of a memb
 	get_api_pages(url,update_collected_repos,(checked_repos,))
 
 
-def write_repo_commits(commits,fcommit,users,allusers):
+def write_repo_commits(commits,url, fcommit,users,allusers):
 	for commit in commits:  #writes commit
 		s=repo+"\t"+commit[u'commit'][u'author'][u'name']+"\t"+commit[u'commit'][u'author'][u'email']+"\t"+commit[u'commit'][u'author'][u'date']
 
