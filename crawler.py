@@ -1,3 +1,4 @@
+#original crawler
 from crawler_lib import *
 import urllib
 import urllib2
@@ -61,7 +62,6 @@ def recover_from_fail():
 	currentuser=flist.readline().strip("\n").strip("\r")
 	users=eval(flist.readline().strip("\n").strip("\r"))
 
-	current_repo='https://api.github.com/repos/mozilla/gecko-dev/commits'
 	fcommit = open("commits.txt","r+")
 	fuser=open("events.txt","r")
 

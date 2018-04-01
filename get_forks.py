@@ -1,6 +1,7 @@
+#crawl forks from repositories (at commits.txt)
 from crawler_lib import *
 
-def write_forks(forklist,fforks):
+def write_forks(forklist,url,fforks):
 	for fork in forklist:
 		s=fork['created_at']+"\n"
 		fforks.write(s)
@@ -14,7 +15,7 @@ fforks=open("forks.txt","w")
 for line in fcommit:
 	field=line.strip("\n").split("\t")
 
-	if len(field)>=5 and field[0]=="repo_info:" and "https://" in field[1]: #header
+	if len(field)>=5 and field[0]=="repo_info:": #header
 		url=field[1][:-8] #remove /commits from url
 		if int(field[4])>0:
 			fforks.write(url+"\n")
